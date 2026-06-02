@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DevSprint — Tablero Kanban</title>
+  <meta name="description" content="Tablero Kanban universitario con Spring Boot y MongoDB. Gestiona tus tareas académicas de forma visual." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sora: ['Sora', 'sans-serif'], mono: ['DM Mono', 'monospace'] },
+          colors: {
+            bg:      '#0f1117',
+            bg2:     '#171a23',
+            bg3:     '#1e2130',
+            accent:  '#7c6fff',
+            accent2: '#5b52d6',
+            teal:    '#2dd4bf',
+            coral:   '#f97066',
+            amber:   '#fbbf24',
+            blue:    '#60a5fa',
+            green:   '#4ade80',
+            purple:  '#c084fc',
+            pink:    '#f472b6',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Sora', sans-serif; background: #0f1117; color: #e8eaf0; }
+    .drag-over { border-color: #7c6fff !important; background: rgba(124,111,255,0.08) !important; }
+    .task-card { cursor: grab; transition: all 0.2s; }
+    .task-card:active { cursor: grabbing; }
+    /* Evitar que elementos hijos intercepten el drag */
+    .task-card * { pointer-events: none; }
+    .task-card .btn-eliminar-tarea { pointer-events: auto; }
+    .task-card.dragging { opacity: 0.35; transform: scale(0.96); box-shadow: 0 0 0 2px #7c6fff55; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 99px; }
+    .modal-bg { background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); }
+    .badge-ALTA   { background: rgba(249,112,102,0.15); color: #f97066; border: 1px solid rgba(249,112,102,0.3); }
+    .badge-MEDIA  { background: rgba(251,191,36,0.15);  color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
+    .badge-BAJA   { background: rgba(74,222,128,0.15);  color: #4ade80; border: 1px solid rgba(74,222,128,0.3); }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)} }
+    .fade-in { animation: fadeIn 0.25s ease forwards; }
+
+  </style>
+</head>
+<body class="min-h-screen">
+
+  <!-- HEADER -->
+  <header class="px-8 py-6 border-b border-white/[0.07] flex items-center justify-between relative overflow-hidden">
+    <div class="absolute -top-20 -left-20 w-80 h-80 rounded-full pointer-events-none"
+         style="background:radial-gradient(circle,rgba(124,111,255,0.12) 0%,transparent 70%)"></div>
+    <div>
+      <p class="text-[11px] font-mono font-medium tracking-widest text-accent uppercase mb-1">Ingeniería de Software · 2025</p>
+      <h1 class="text-2xl font-bold tracking-tight">Dev<span class="text-accent">Sprint</span> <span class="text-white/40 font-light">— Tablero Kanban</span></h1>
+    </div>
+    <div class="flex items-center gap-3">
+      <div id="status-dot" class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+      <span id="status-text" class="text-xs text-white/40 font-mono">Conectando...</span>
+      <button id="btn-nuevo-tablero"
+        class="ml-4 px-4 py-2 rounded-lg bg-accent/10 border border-accent/30 text-accent text-sm font-medium hover:bg-accent/20 transition-all">
+        + Nuevo Tablero
+      </button>
+    </div>
+  </header>
+
+  <!-- SELECTOR DE TABLERO -->
+  <div class="px-8 py-3 border-b border-white/[0.07] flex items-center gap-4">
+    <label class="text-xs text-white/40 font-mono">Tablero activo:</label>
+    <select id="selector-tablero"
+      class="bg-bg3 border border-white/10 text-sm text-white rounded-lg px-3 py-1.5 focus:outline-none focus:border-accent/50 font-sora">
+      <option value="">— seleccionar —</option>
+    </select>
+    <span id="board-desc" class="text-xs text-white/30 font-mono italic"></span>
+  </div>
+
+  <!-- BOARD -->
+  <main class="p-6 overflow-x-auto">
+    <div id="board" class="flex gap-5 min-h-[70vh] pb-6">
+      <!-- Las columnas se renderizan aquí dinámicamente -->
+      <div id="board-empty" class="flex-1 flex flex-col items-center justify-center text-white/20">
+        <svg class="w-16 h-16 mb-4 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        </svg>
+        <p class="text-sm">Selecciona o crea un tablero para comenzar</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- MODAL: Nueva Tarea -->
+  <div id="modal-tarea" class="hidden fixed inset-0 modal-bg z-50 flex items-center justify-center p-4">
+    <div class="bg-bg2 border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl fade-in">
+      <h3 class="text-lg font-semibold mb-5">Nueva Tarea</h3>
+      <input type="hidden" id="form-columna-id" />
+      <input type="hidden" id="form-tablero-id" />
+      <div class="space-y-4">
+        <div>
+          <label class="text-xs text-white/40 font-mono block mb-1">Título *</label>
+          <input id="form-titulo" type="text" placeholder="Ej: Implementar endpoint POST"
+            class="w-full bg-bg3 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50 placeholder-white/20" />
+        </div>
+        <div>
+          <label class="text-xs text-white/40 font-mono block mb-1">Descripción</label>
+          <textarea id="form-descripcion" rows="3" placeholder="Descripción de la tarea..."
+            class="w-full bg-bg3 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50 placeholder-white/20 resize-none"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-white/40 font-mono block mb-1">Prioridad</label>
+            <select id="form-prioridad"
+              class="w-full bg-bg3 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50">
+              <option value="MEDIA">Media</option>
+              <option value="ALTA">Alta</option>
+              <option value="BAJA">Baja</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs text-white/40 font-mono block mb-1">Fecha límite</label>
+            <input id="form-fecha" type="date"
+              class="w-full bg-bg3 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50 text-white" />
+          </div>
+        </div>
+        <div>
+          <label class="text-xs text-white/40 font-mono block mb-1">Etiquetas (separadas por coma)</label>
+          <input id="form-etiquetas" type="text" placeholder="frontend, api, mongodb"
+            class="w-full bg-bg3 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50 placeholder-white/20" />
+        </div>
+        <div>
+          <label class="text-xs text-white/40 font-mono block mb-1">Asignado a</label>
+          <input id="form-asignado" type="text" placeholder="Nombre del estudiante"
+            class="w-full bg-bg3 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50 placeholder-white/20" />
+        </div>
+      </div>
+      <div class="flex gap-3 mt-6">
+        <button id="btn-cancelar-tarea"
+          class="flex-1 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white/60 hover:bg-white/10 transition">
+          Cancelar
+        </button>
+        <button id="btn-guardar-tarea"
+          class="flex-1 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent2 transition">
+          Crear Tarea
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Nuevo Tablero -->
+  <div id="modal-tablero" class="hidden fixed inset-0 modal-bg z-50 flex items-center justify-center p-4">
+    <div class="bg-bg2 border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl fade-in">
+      <h3 class="text-lg font-semibold mb-5">Nuevo Tablero</h3>
+      <div class="space-y-4">
+        <div>
+          <label class="text-xs text-white/40 font-mono block mb-1">Nombre *</label>
+          <input id="new-board-nombre" type="text" placeholder="Ej: Sprint 1 — Proyecto Final"
+            class="w-full bg-bg3 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50 placeholder-white/20" />
+        </div>
+        <div>
+          <label class="text-xs text-white/40 font-mono block mb-1">Descripción</label>
+          <input id="new-board-desc" type="text" placeholder="Descripción breve..."
+            class="w-full bg-bg3 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50 placeholder-white/20" />
+        </div>
+      </div>
+      <div class="flex gap-3 mt-6">
+        <button id="btn-cancelar-tablero"
+          class="flex-1 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white/60 hover:bg-white/10 transition">
+          Cancelar
+        </button>
+        <button id="btn-guardar-tablero"
+          class="flex-1 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent2 transition">
+          Crear Tablero
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast" class="hidden fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl border text-sm font-medium shadow-lg fade-in"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
