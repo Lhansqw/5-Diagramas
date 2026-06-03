@@ -53,7 +53,8 @@
 
 
 ### D5 — Diagrama de Despliegue
-<img width="888" height="528" alt="despli" src="https://github.com/user-attachments/assets/33ce2654-5e09-4c2e-8735-a65dc124cca6" />
+<img width="668" height="408" alt="Untitled (3)" src="https://github.com/user-attachments/assets/dbbb263d-e8f5-446b-9e85-8d8249eacc4d" />
+
 
 
 ## Instalación y Ejecución
