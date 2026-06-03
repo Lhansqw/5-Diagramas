@@ -80,7 +80,8 @@ const COLUMN_COLORS = ['#7c6fff', '#60a5fa', '#2dd4bf', '#4ade80', '#fbbf24', '#
 function renderTablero(tablero) {
   tableroActual = tablero;
   const board = document.getElementById('board');
-  document.getElementById('board-empty').style.display = 'none';
+  const emptyEl = document.getElementById('board-empty');
+  if (emptyEl) emptyEl.style.display = 'none';
 
   board.innerHTML = tablero.columnas
     .sort((a, b) => a.orden - b.orden)
