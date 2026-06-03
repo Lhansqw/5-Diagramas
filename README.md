@@ -41,7 +41,8 @@
 
 ### D3 — Diagrama Conceptual de Clases
 
-<img width="751" height="567" alt="clases" src="https://github.com/user-attachments/assets/b8c1dd86-9c34-4a20-a437-b13144a5050f" />
+<img width="671" height="1195" alt="Untitled (2)" src="https://github.com/user-attachments/assets/7640700b-32a7-4943-80d1-f15a522e8bfd" />
+
 
 
 
