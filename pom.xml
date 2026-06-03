@@ -9,10 +9,10 @@
 		<relativePath/>
 	</parent>
 	<groupId>com.devsprint</groupId>
-	<artifactId>kanban</artifactId>
+	<artifactId>gestionlabs</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>kanban</name>
-	<description>Tablero Kanban Universitario DevSprint</description>
+	<name>gestionlabs</name>
+	<description>Sistema de Gestión de Laboratorios</description>
 
 	<properties>
 		<java.version>17</java.version>

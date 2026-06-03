@@ -1,340 +1,317 @@
-// ─── CONFIG ────────────────────────────────────────────────────────────────
-const API = '/api/tableros';
-let tableroActual = null;
-let draggedTaskId = null;
-let draggedFromColId = null;
+/* ═══════════════════════════════════════════════════
+   GestionLabs · app.js
+   Lógica de la aplicación: Auth, Laboratorios, Reservas
+═══════════════════════════════════════════════════ */
 
-// ─── UTILIDADES ─────────────────────────────────────────────────────────────
-function toast(msg, tipo = 'ok') {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.className = `fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl border text-sm font-medium shadow-lg fade-in ${
-    tipo === 'ok'
-      ? 'bg-green/10 border-green/30 text-green-400'
-      : 'bg-coral/10 border-coral/30 text-[#f97066]'
-  }`;
-  el.classList.remove('hidden');
-  setTimeout(() => el.classList.add('hidden'), 3000);
+// ─── Estado global ──────────────────────────────────
+let currentUser  = null;
+let selectedLab  = null;
+const API = '/api';
+
+// ─── Referencias del DOM ────────────────────────────
+const $ = id => document.getElementById(id);
+
+const loginView       = $('login-view');
+const dashboardView   = $('dashboard-view');
+const loginForm       = $('login-form');
+const loginBtn        = $('login-btn');
+const logoutBtn       = $('logout-btn');
+const navAvatar       = $('nav-avatar');
+const navUserInfo     = $('nav-user-info');
+const labsList        = $('labs-list');
+const misReservas     = $('mis-reservas-list');
+const noLabSelected   = $('no-lab-selected');
+const labHeader       = $('lab-header');
+const labTitle        = $('lab-title');
+const labEquiposCount = $('lab-equipos-count');
+const equiposSection  = $('equipos-section');
+const equiposGrid     = $('equipos-grid');
+const reservaSection  = $('reserva-section');
+const reservaForm     = $('reserva-form');
+const reservaBtn      = $('reserva-btn');
+const selectedLabId   = $('selected-lab-id');
+const toast           = $('toast');
+const toastMsg        = $('toast-msg');
+const toastIcon       = $('toast-icon');
+
+// ─── Toast ──────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type = 'ok') {
+  const isOk = type === 'ok';
+
+  toast.className = `toast ${isOk ? 'toast-ok' : 'toast-error'}`;
+  toastMsg.textContent = msg;
+  toastIcon.innerHTML = isOk
+    ? '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>'
+    : '<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>';
+
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 3500);
 }
 
-function setStatus(conectado) {
-  const dot  = document.getElementById('status-dot');
-  const text = document.getElementById('status-text');
-  dot.className  = `w-2 h-2 rounded-full ${conectado ? 'bg-green-400 animate-pulse' : 'bg-red-500'}`;
-  text.textContent = conectado ? 'Conectado a MongoDB' : 'Sin conexión';
-}
+// ─── Spinner helpers ────────────────────────────────
+const SPIN_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+  style="animation:spin .8s linear infinite;display:inline-block;vertical-align:middle;margin-right:.4rem;">
+  <circle cx="12" cy="12" r="10" stroke-opacity=".25"/>
+  <path d="M12 2a10 10 0 0110 10" stroke-linecap="round"/>
+</svg>`;
 
-async function apiFetch(url, opts = {}) {
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `HTTP ${res.status}`);
+// Inject spin keyframe once
+const styleEl = document.createElement('style');
+styleEl.textContent = '@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+document.head.appendChild(styleEl);
+
+function setLoading(btn, loading, restoreHTML) {
+  if (loading) {
+    btn._orig = btn.innerHTML;
+    btn.innerHTML = `${SPIN_SVG} Cargando…`;
+    btn.disabled = true;
+    btn.style.opacity = '.7';
+  } else {
+    btn.innerHTML = restoreHTML ?? btn._orig;
+    btn.disabled = false;
+    btn.style.opacity = '1';
   }
-  return res.json();
 }
 
-// ─── RENDER ──────────────────────────────────────────────────────────────────
-function prioridadBadge(p) {
-  const map = { ALTA: 'badge-ALTA', MEDIA: 'badge-MEDIA', BAJA: 'badge-BAJA' };
-  return `<span class="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full ${map[p] || 'badge-MEDIA'}">${p}</span>`;
+// ─── Auth: Login ────────────────────────────────────
+loginForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  setLoading(loginBtn, true);
+
+  try {
+    const res = await fetch(`${API}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        correo: $('email').value,
+        contraseña: $('password').value,
+      }),
+    });
+
+    if (!res.ok) throw new Error();
+    currentUser = await res.json();
+    initDashboard();
+  } catch {
+    showToast('Credenciales incorrectas', 'error');
+    setLoading(loginBtn, false);
+  }
+});
+
+// ─── Auth: Logout ────────────────────────────────────
+logoutBtn.addEventListener('click', () => {
+  currentUser = null;
+  selectedLab = null;
+  loginView.style.display  = 'flex';
+  dashboardView.style.display = 'none';
+  setLoading(loginBtn, false);
+});
+
+// ─── Dashboard init ──────────────────────────────────
+function initDashboard() {
+  loginView.style.display     = 'none';
+  dashboardView.style.display = 'flex';
+
+  // Avatar & name
+  const initial = (currentUser.nombre || 'U')[0].toUpperCase();
+  navAvatar.textContent = initial;
+  const [nameLine, rolLine] = navUserInfo.querySelectorAll('p');
+  nameLine.textContent = currentUser.nombre;
+  rolLine.textContent  = currentUser.rol;
+  navUserInfo.style.display = 'block';
+
+  loadLabs();
+  loadReservas();
 }
 
-function renderTarjeta(tarea, columnaId) {
-  const etiquetas = (tarea.etiquetas || [])
-    .map(e => `<span class="text-[10px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-white/50 font-mono">${e}</span>`)
-    .join('');
+// ─── Laboratorios ────────────────────────────────────
+async function loadLabs() {
+  labsList.innerHTML = renderSkeleton();
+  try {
+    const res  = await fetch(`${API}/laboratorios`);
+    const labs = await res.json();
+    renderLabsList(labs);
+  } catch {
+    labsList.innerHTML = `<p style="font-size:.82rem;color:#ef4444;text-align:center;padding:1rem 0;">Error al cargar laboratorios.</p>`;
+  }
+}
 
-  const fecha = tarea.fechaVencimiento
-    ? `<span class="text-[10px] font-mono text-white/30">📅 ${tarea.fechaVencimiento}</span>`
-    : '';
+function renderSkeleton() {
+  return Array(3).fill(0).map(() => `
+    <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);border-radius:14px;padding:1rem;animation:pulse 1.5s infinite;">
+      <div style="height:.8rem;background:rgba(255,255,255,.08);border-radius:6px;width:65%;margin-bottom:.5rem;"></div>
+      <div style="height:.6rem;background:rgba(255,255,255,.05);border-radius:6px;width:40%;"></div>
+    </div>
+  `).join('');
+}
 
-  const asignado = tarea.asignadoA
-    ? `<span class="text-[10px] font-mono text-white/40">👤 ${tarea.asignadoA}</span>`
-    : '';
+function renderLabsList(labs) {
+  if (!labs.length) {
+    labsList.innerHTML = `<p style="font-size:.82rem;color:#475569;text-align:center;padding:1rem 0;font-style:italic;">Sin laboratorios disponibles.</p>`;
+    return;
+  }
+  labsList.innerHTML = '';
+  labs.forEach(lab => {
+    const el = document.createElement('div');
+    el.className = 'lab-card';
+    el.dataset.id = lab.id;
 
-  return `
-    <div class="task-card bg-bg3 border border-white/[0.07] rounded-xl p-3.5 mb-3 select-none
-                hover:border-accent/30 hover:shadow-lg hover:shadow-black/30 group"
-         draggable="true"
-         data-task-id="${tarea.id}"
-         data-col-id="${columnaId}">
-      <div class="flex items-start justify-between gap-2 mb-2">
-        <p class="text-sm font-medium leading-snug flex-1">${tarea.titulo}</p>
-        ${prioridadBadge(tarea.prioridad || 'MEDIA')}
+    const disponibles = lab.equipos.filter(e => e.estado === 'DISPONIBLE').length;
+    el.innerHTML = `
+      <div style="font-weight:700;font-size:.92rem;color:#f1f5f9;margin-bottom:.3rem;">${lab.nombre}</div>
+      <div style="display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:#64748b;">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+        </svg>
+        ${lab.equipos.length} equipos · <span style="color:#34d399;">${disponibles} disponibles</span>
       </div>
-      ${tarea.descripcion ? `<p class="text-xs text-white/40 mb-2 leading-relaxed">${tarea.descripcion}</p>` : ''}
-      ${etiquetas ? `<div class="flex flex-wrap gap-1 mb-2">${etiquetas}</div>` : ''}
-      <div class="flex items-center justify-between mt-1">
-        <div class="flex gap-3">${fecha}${asignado}</div>
-        <button class="btn-eliminar-tarea opacity-0 group-hover:opacity-100 transition text-white/20 hover:text-[#f97066] text-xs"
-                data-task-id="${tarea.id}" title="Eliminar tarea">✕</button>
+    `;
+
+    el.addEventListener('click', () => {
+      document.querySelectorAll('.lab-card').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+      selectLab(lab);
+    });
+
+    labsList.appendChild(el);
+  });
+}
+
+// ─── Seleccionar laboratorio ─────────────────────────
+function selectLab(lab) {
+  selectedLab = lab;
+
+  // Show sections
+  noLabSelected.style.display   = 'none';
+  labHeader.style.display       = 'block';
+  equiposSection.style.display  = 'block';
+  reservaSection.style.display  = 'block';
+
+  // Lab info
+  labTitle.textContent = lab.nombre;
+  labEquiposCount.textContent = lab.equipos.length;
+  selectedLabId.value = lab.id;
+
+  // Default date = today
+  const today = new Date().toISOString().split('T')[0];
+  $('fecha-turno').min   = today;
+  $('fecha-turno').value = today;
+
+  // Render equipos
+  renderEquipos(lab.equipos);
+}
+
+function renderEquipos(equipos) {
+  if (!equipos.length) {
+    equiposGrid.innerHTML = `<p style="font-size:.82rem;color:#475569;font-style:italic;">Sin equipos registrados.</p>`;
+    return;
+  }
+  equiposGrid.innerHTML = '';
+  equipos.forEach(eq => {
+    const dispo   = eq.estado === 'DISPONIBLE';
+    const badgeCls = dispo ? 'badge-green' : 'badge-yellow';
+    const icon     = dispo
+      ? '<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>'
+      : '<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>';
+
+    const card = document.createElement('div');
+    card.className = 'eq-card';
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;gap:.7rem;margin-bottom:.6rem;">
+        <div style="width:36px;height:36px;background:rgba(99,102,241,.1);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="16" height="16" fill="none" stroke="#818cf8" stroke-width="1.8" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+          </svg>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <p style="font-size:.85rem;font-weight:700;color:#f1f5f9;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${eq.nombre}</p>
+          <p style="font-size:.7rem;color:#334155;margin:0;font-family:monospace;">${eq.id}</p>
+        </div>
       </div>
-    </div>`;
-}
-
-const COLUMN_COLORS = ['#7c6fff', '#60a5fa', '#2dd4bf', '#4ade80', '#fbbf24', '#f472b6'];
-
-function renderTablero(tablero) {
-  tableroActual = tablero;
-  const board = document.getElementById('board');
-  const emptyEl = document.getElementById('board-empty');
-  if (emptyEl) emptyEl.style.display = 'none';
-
-  board.innerHTML = tablero.columnas
-    .sort((a, b) => a.orden - b.orden)
-    .map((col, i) => {
-      const color = COLUMN_COLORS[i % COLUMN_COLORS.length];
-      const wip = col.limiteWIP
-        ? `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded ${col.tareas.length >= col.limiteWIP ? 'bg-[#f97066]/15 text-[#f97066] border border-[#f97066]/30' : 'bg-white/5 text-white/30 border border-white/10'}">
-            ${col.tareas.length}/${col.limiteWIP}
-           </span>`
-        : `<span class="text-[10px] font-mono text-white/30">${col.tareas.length}</span>`;
-
-      const tarjetas = col.tareas.map(t => renderTarjeta(t, col.id)).join('');
-
-      return `
-        <div class="kanban-col flex flex-col min-w-[280px] max-w-[280px]"
-             data-col-id="${col.id}">
-          <!-- Header columna -->
-          <div class="flex items-center justify-between mb-4 px-1">
-            <div class="flex items-center gap-2">
-              <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${color}"></span>
-              <h2 class="text-sm font-semibold">${col.nombre}</h2>
-            </div>
-            ${wip}
-          </div>
-
-          <!-- Drop zone -->
-          <div class="drop-zone flex-1 rounded-2xl border border-dashed border-white/[0.07] bg-bg2/50 p-3 transition-all min-h-[100px]"
-               data-col-id="${col.id}">
-            ${tarjetas}
-          </div>
-
-          <!-- Botón añadir tarea -->
-          <button class="btn-add-task mt-3 w-full py-2 rounded-xl border border-dashed border-white/[0.07]
-                         text-xs text-white/30 hover:text-white/60 hover:border-accent/30 hover:bg-accent/5
-                         transition-all font-mono"
-                  data-col-id="${col.id}">
-            + añadir tarea
-          </button>
-        </div>`;
-    })
-    .join('');
-
-  bindBoardEvents();
-}
-
-// ─── EVENTOS DEL BOARD ──────────────────────────────────────────────────────
-function bindBoardEvents() {
-  // ── Drag & Drop ──────────────────────────────────────────────────────────
-  document.querySelectorAll('.task-card').forEach(card => {
-    card.addEventListener('dragstart', e => {
-      draggedTaskId    = card.dataset.taskId;
-      draggedFromColId = card.dataset.colId;
-      // Guardamos en dataTransfer también (más fiable entre navegadores)
-      e.dataTransfer.setData('taskId', draggedTaskId);
-      e.dataTransfer.setData('fromColId', draggedFromColId);
-      e.dataTransfer.effectAllowed = 'move';
-      // Pequeño delay para que el ghost aparezca antes de oscurecer la tarjeta
-      setTimeout(() => card.classList.add('dragging'), 0);
-    });
-
-    card.addEventListener('dragend', () => {
-      card.classList.remove('dragging');
-      // Limpiamos cualquier drop-zone que haya quedado marcada
-      document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'));
-    });
-  });
-
-  document.querySelectorAll('.drop-zone').forEach(zone => {
-    // Contador para ignorar dragleave causados por entrar en elementos hijos
-    let dragCounter = 0;
-
-    zone.addEventListener('dragenter', e => {
-      e.preventDefault();
-      dragCounter++;
-      zone.classList.add('drag-over');
-    });
-
-    zone.addEventListener('dragover', e => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-    });
-
-    zone.addEventListener('dragleave', () => {
-      dragCounter--;
-      if (dragCounter <= 0) {
-        dragCounter = 0;
-        zone.classList.remove('drag-over');
-      }
-    });
-
-    zone.addEventListener('drop', async e => {
-      e.preventDefault();
-      dragCounter = 0;
-      zone.classList.remove('drag-over');
-
-      // Leemos de dataTransfer (más fiable que variables globales en algunos browsers)
-      const taskId   = e.dataTransfer.getData('taskId') || draggedTaskId;
-      const fromCol  = e.dataTransfer.getData('fromColId') || draggedFromColId;
-      const destColId = zone.dataset.colId;
-
-      if (!taskId || destColId === fromCol) return;
-      await moverTarea(taskId, destColId);
-    });
-  });
-
-  // ── Botones "añadir tarea" ────────────────────────────────────────────────
-  document.querySelectorAll('.btn-add-task').forEach(btn => {
-    btn.addEventListener('click', () => abrirModalTarea(btn.dataset.colId));
-  });
-
-  // ── Botones eliminar ─────────────────────────────────────────────────────
-  document.querySelectorAll('.btn-eliminar-tarea').forEach(btn => {
-    btn.addEventListener('click', async e => {
-      e.stopPropagation();
-      if (!confirm('¿Eliminar esta tarea?')) return;
-      await eliminarTarea(btn.dataset.taskId);
-    });
+      <span class="badge ${badgeCls}">
+        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">${icon}</svg>
+        ${eq.estado}
+      </span>
+    `;
+    equiposGrid.appendChild(card);
   });
 }
 
+// ─── Reservas: Crear ─────────────────────────────────
+reservaForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  setLoading(reservaBtn, true);
 
-// ─── API CALLS ───────────────────────────────────────────────────────────────
-async function cargarTableros() {
-  try {
-    const tableros = await apiFetch(API);
-    setStatus(true);
-    const sel = document.getElementById('selector-tablero');
-    sel.innerHTML = '<option value="">— seleccionar —</option>' +
-      tableros.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
-    if (tableros.length > 0) {
-      sel.value = tableros[0].id;
-      await cargarTablero(tableros[0].id);
-    }
-  } catch (err) {
-    setStatus(false);
-    toast('No se pudo conectar con el servidor: ' + err.message, 'err');
-  }
-}
-
-async function cargarTablero(id) {
-  try {
-    const t = await apiFetch(`${API}/${id}`);
-    document.getElementById('board-desc').textContent = t.descripcion || '';
-    renderTablero(t);
-  } catch (err) {
-    toast('Error al cargar el tablero: ' + err.message, 'err');
-  }
-}
-
-async function moverTarea(tareaId, colDestinoId) {
-  try {
-    const t = await apiFetch(`${API}/${tableroActual.id}/tareas/${tareaId}/mover`, {
-      method: 'PUT',
-      body: JSON.stringify({ columnaDestinoId: colDestinoId })
-    });
-    renderTablero(t);
-    toast('Tarea movida ✓');
-  } catch (err) {
-    toast(err.message, 'err');
-    await cargarTablero(tableroActual.id);
-  }
-}
-
-async function eliminarTarea(tareaId) {
-  try {
-    const t = await apiFetch(`${API}/${tableroActual.id}/tareas/${tareaId}`, { method: 'DELETE' });
-    renderTablero(t);
-    toast('Tarea eliminada ✓');
-  } catch (err) {
-    toast(err.message, 'err');
-  }
-}
-
-// ─── MODAL TAREA ─────────────────────────────────────────────────────────────
-function abrirModalTarea(columnaId) {
-  document.getElementById('form-columna-id').value = columnaId;
-  document.getElementById('form-tablero-id').value = tableroActual.id;
-  document.getElementById('form-titulo').value = '';
-  document.getElementById('form-descripcion').value = '';
-  document.getElementById('form-prioridad').value = 'MEDIA';
-  document.getElementById('form-fecha').value = '';
-  document.getElementById('form-etiquetas').value = '';
-  document.getElementById('form-asignado').value = '';
-  document.getElementById('modal-tarea').classList.remove('hidden');
-  document.getElementById('form-titulo').focus();
-}
-
-document.getElementById('btn-cancelar-tarea').addEventListener('click', () =>
-  document.getElementById('modal-tarea').classList.add('hidden'));
-
-document.getElementById('btn-guardar-tarea').addEventListener('click', async () => {
-  const titulo = document.getElementById('form-titulo').value.trim();
-  if (!titulo) { toast('El título es obligatorio', 'err'); return; }
-
-  const tableroId = document.getElementById('form-tablero-id').value;
-  const columnaId = document.getElementById('form-columna-id').value;
-  const etiquetasStr = document.getElementById('form-etiquetas').value.trim();
-
-  const dto = {
-    titulo,
-    descripcion: document.getElementById('form-descripcion').value.trim(),
-    prioridad:   document.getElementById('form-prioridad').value,
-    fechaVencimiento: document.getElementById('form-fecha').value || null,
-    asignadoA:   document.getElementById('form-asignado').value.trim() || null,
-    etiquetas:   etiquetasStr ? etiquetasStr.split(',').map(s => s.trim()) : []
+  const body = {
+    usuarioId:     currentUser.id,
+    laboratorioId: selectedLabId.value,
+    franjaHoraria: {
+      fecha:      $('fecha-turno').value,
+      horaInicio: $('hora-inicio').value,
+      horaFin:    $('hora-fin').value,
+    },
   };
 
   try {
-    await apiFetch(`${API}/${tableroId}/columnas/${columnaId}/tareas`, {
-      method: 'POST', body: JSON.stringify(dto)
+    const res = await fetch(`${API}/reservas`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body),
     });
-    document.getElementById('modal-tarea').classList.add('hidden');
-    await cargarTablero(tableroId);
-    toast('Tarea creada ✓');
-  } catch (err) {
-    toast(err.message, 'err');
+
+    if (!res.ok) throw new Error();
+    showToast('¡Turno reservado con éxito!');
+    $('hora-inicio').value = '';
+    $('hora-fin').value    = '';
+    loadReservas();
+  } catch {
+    showToast('Error al crear la reserva', 'error');
+  } finally {
+    setLoading(reservaBtn, false);
   }
 });
 
-// ─── MODAL TABLERO ────────────────────────────────────────────────────────────
-document.getElementById('btn-nuevo-tablero').addEventListener('click', () =>
-  document.getElementById('modal-tablero').classList.remove('hidden'));
-
-document.getElementById('btn-cancelar-tablero').addEventListener('click', () =>
-  document.getElementById('modal-tablero').classList.add('hidden'));
-
-document.getElementById('btn-guardar-tablero').addEventListener('click', async () => {
-  const nombre = document.getElementById('new-board-nombre').value.trim();
-  if (!nombre) { toast('El nombre del tablero es obligatorio', 'err'); return; }
+// ─── Reservas: Listar ────────────────────────────────
+async function loadReservas() {
+  if (!currentUser) return;
+  misReservas.innerHTML = renderSkeleton();
 
   try {
-    const t = await apiFetch(API, {
-      method: 'POST',
-      body: JSON.stringify({
-        nombre,
-        descripcion: document.getElementById('new-board-desc').value.trim(),
-        propietarioId: 'estudiante-01'
-      })
-    });
-    document.getElementById('modal-tablero').classList.add('hidden');
-    await cargarTableros();
-    document.getElementById('selector-tablero').value = t.id;
-    await cargarTablero(t.id);
-    toast('Tablero creado ✓');
-  } catch (err) {
-    toast(err.message, 'err');
+    const res      = await fetch(`${API}/reservas/usuario/${currentUser.id}`);
+    const reservas = await res.json();
+    renderReservas(reservas);
+  } catch {
+    misReservas.innerHTML = `<p style="font-size:.8rem;color:#ef4444;text-align:center;padding:1rem 0;">Error al cargar reservas.</p>`;
   }
-});
+}
 
-// ─── SELECTOR TABLERO ─────────────────────────────────────────────────────────
-document.getElementById('selector-tablero').addEventListener('change', async (e) => {
-  if (e.target.value) await cargarTablero(e.target.value);
-});
+function renderReservas(reservas) {
+  if (!reservas.length) {
+    misReservas.innerHTML = `<p style="font-size:.8rem;color:#475569;text-align:center;padding:1rem 0;font-style:italic;">No tienes reservas activas.</p>`;
+    return;
+  }
 
-// ─── INIT ─────────────────────────────────────────────────────────────────────
-cargarTableros();
+  misReservas.innerHTML = '';
+  [...reservas].reverse().forEach(r => {
+    const badgeCls = r.estado === 'PENDIENTE' ? 'badge-indigo' : r.estado === 'CONFIRMADA' ? 'badge-green' : 'badge-yellow';
+    const card = document.createElement('div');
+    card.className = 'res-card fade-up';
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.4rem;">
+        <span style="font-size:.82rem;font-weight:700;color:#f1f5f9;">${r.franjaHoraria?.fecha ?? '—'}</span>
+        <span class="badge ${badgeCls}" style="font-size:.65rem;">${r.estado}</span>
+      </div>
+      <div style="font-size:.78rem;color:#64748b;display:flex;align-items:center;gap:.35rem;">
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        ${r.franjaHoraria?.horaInicio ?? '—'} — ${r.franjaHoraria?.horaFin ?? '—'}
+      </div>
+      <div style="font-size:.72rem;color:#334155;margin-top:.25rem;font-family:monospace;">
+        Lab: ${r.laboratorioId?.substring(0,8)}…
+      </div>
+    `;
+    misReservas.appendChild(card);
+  });
+}
