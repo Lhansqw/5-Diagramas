@@ -16,33 +16,43 @@
 
 ### D1 — Diagrama de Contexto
 
+
 > Vista de alto nivel: cómo interactúan los actores externos con el sistema central y la base de datos.
 
-<img width="273" height="298" alt="{23C4FC46-6BF4-48E2-B97B-7A2DD15EE010}" src="https://github.com/user-attachments/assets/151e909f-f728-462b-b851-595c87ecd841" />
+
+
+<img width="744" height="555" alt="contex" src="https://github.com/user-attachments/assets/3fd03ae6-99a9-4552-9cd0-6704d3770f8f" />
+
+
+
 
 
 ---
 
 ### D2 — Diagrama de Componentes
 
-<img width="411" height="265" alt="{52453B7F-2A03-4FDC-B7FF-049E1355C43C}" src="https://github.com/user-attachments/assets/85a62530-a4bd-4dde-af7f-2fe95c537715" />
+<img width="964" height="493" alt="compos" src="https://github.com/user-attachments/assets/08a9d0b5-d113-4d3d-8608-94a5acb550ba" />
+
+
+
 
 
 ---
 
 ### D3 — Diagrama Conceptual de Clases
 
-<img width="331" height="318" alt="{1963E524-51CA-43F3-9CA2-7B06112CA7A4}" src="https://github.com/user-attachments/assets/8c8a18ad-1da2-47fa-b276-70f8e6d1dd7c" />
+<img width="751" height="567" alt="clases" src="https://github.com/user-attachments/assets/b8c1dd86-9c34-4a20-a437-b13144a5050f" />
+
 
 
 ### D4 — Arquitectura por Capas
 
-<img width="429" height="380" alt="{6A029E8F-7C35-4952-B0A7-54F37BE18496}" src="https://github.com/user-attachments/assets/c845eed9-1554-4d5f-9a95-9fe5c92c76fa" />
+<img width="958" height="805" alt="capas (1)" src="https://github.com/user-attachments/assets/c57562e1-4afc-4925-90b3-6da394a09172" />
+
 
 
 ### D5 — Diagrama de Despliegue
-
-<img width="309" height="320" alt="{81F51C93-F755-4555-96FB-6D0FAB93CD92}" src="https://github.com/user-attachments/assets/db4474b0-e0f7-4561-904d-adec0f0aebf6" />
+<img width="888" height="528" alt="despli" src="https://github.com/user-attachments/assets/33ce2654-5e09-4c2e-8735-a65dc124cca6" />
 
 
 ## Instalación y Ejecución
